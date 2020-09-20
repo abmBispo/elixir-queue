@@ -1,0 +1,2 @@
+defmodule ElixirQueueTest do
+end
