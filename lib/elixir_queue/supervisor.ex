@@ -7,6 +7,7 @@ defmodule ElixirQueue.Supervisor do
 
   def init(:ok) do
     children = [
+      {DynamicSupervisor, name: ElixirQueue.WorkerSupervisor, strategy: :one_for_one},
       {ElixirQueue.Queue, name: ElixirQueue.Queue}
     ]
 
