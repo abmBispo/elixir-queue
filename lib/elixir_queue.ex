@@ -1,24 +1,33 @@
 defmodule ElixirQueue do
-  use Application
+  use Task, restart: :permanent
+  require Logger
 
   alias ElixirQueue.{
-    Worker,
-    WorkerSupervisor,
-    Queue
+    Queue,
+    Worker.WorkerPool
   }
 
-  @impl true
-  def start(_type, _args) do
-    supervisor_tuple = ElixirQueue.Supervisor.start_link(name: ElixirQueue.Supervisor)
-    start_workers()
-    supervisor_tuple
+  @spec start_link(any) :: {:ok, pid}
+  def start_link(_arg) do
+    Task.start_link(__MODULE__, :event_loop, [])
   end
 
-  def start_workers do
-    1..:erlang.system_info(:logical_processors_online)
-    |> Enum.each(fn _ ->
-      {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
-      Queue.add_worker(pid)
-    end)
+  @spec event_loop :: no_return
+  def event_loop do
+    :timer.sleep(100)
+
+    case Queue.fetch() do
+      {:ok, job} ->
+        {:ok, result} =
+          Task.async(fn -> WorkerPool.perform(job) end)
+          |> Task.await()
+
+        Logger.info("Result for job #{inspect(job)}: #{inspect(result)}")
+
+      {:error, :empty} ->
+        event_loop()
+    end
+
+    event_loop()
   end
 end

@@ -46,8 +46,8 @@ defmodule ElixirQueue.Queue do
   end
 
   @impl true
-  def handle_call({:perform_later, job}, _from, queue) do
-    {:reply, :ok, Tuple.append(queue, job)}
+  def handle_call({:perform_later, job}, _from, state = %{jobs: queue}) do
+    {:reply, :ok, Map.put(state, :jobs, Tuple.append(queue, job))}
   end
 
   def handle_call(:fetch, _from, %{jobs: {}, workers_pids: workers_pids}) do
