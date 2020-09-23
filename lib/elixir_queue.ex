@@ -4,7 +4,7 @@ defmodule ElixirQueue do
 
   alias ElixirQueue.{
     Queue,
-    Worker.WorkerPool
+    WorkerPool
   }
 
   @spec start_link(any) :: {:ok, pid}

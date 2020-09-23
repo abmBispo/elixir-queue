@@ -9,8 +9,8 @@ defmodule ElixirQueue.Queue do
   end
 
   @impl true
-  @spec init(any) :: {:ok, %{jobs: tuple(), workers_pids: list()}}
-  def init(_opts), do: {:ok, %{jobs: {}, workers_pids: []}}
+  @spec init(any) :: {:ok, tuple()}
+  def init(_opts), do: {:ok, {}}
 
   @doc ~S"""
   Get next job to be processed
@@ -39,27 +39,17 @@ defmodule ElixirQueue.Queue do
   @spec fetch :: {:ok, any} | {:error, :empty}
   def fetch, do: GenServer.call(Queue, :fetch)
 
-  @spec add_worker(pid()) :: :ok
-  def add_worker(pid) do
-    GenServer.call(Queue, {:add_worker, pid})
-    :ok
-  end
-
   @impl true
-  def handle_call({:perform_later, job}, _from, state = %{jobs: queue}) do
-    {:reply, :ok, Map.put(state, :jobs, Tuple.append(queue, job))}
+  def handle_call({:perform_later, job}, _from, queue) do
+    {:reply, :ok, Tuple.append(queue, job)}
   end
 
-  def handle_call(:fetch, _from, %{jobs: {}, workers_pids: workers_pids}) do
-    {:reply, {:error, :empty}, %{jobs: {}, workers_pids: workers_pids}}
+  def handle_call(:fetch, _from, {}) do
+    {:reply, {:error, :empty}, {}}
   end
 
-  def handle_call(:fetch, _from, state = %{jobs: queue}) do
+  def handle_call(:fetch, _from, queue) do
     job = elem(queue, 0)
-    {:reply, {:ok, job}, Map.put(state, :jobs, Tuple.delete_at(queue, 0))}
-  end
-
-  def handle_call({:add_worker, pid}, _from, state = %{workers_pids: workers_pids}) do
-    {:reply, :ok, Map.put(state, :workers_pids, [pid | workers_pids])}
+    {:reply, {:ok, job}, Tuple.delete_at(queue, 0)}
   end
 end

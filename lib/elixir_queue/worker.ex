@@ -1,5 +1,7 @@
 defmodule ElixirQueue.Worker do
   use Agent
+  require Logger
+
   alias ElixirQueue.{
     Job,
     Worker
@@ -13,20 +15,25 @@ defmodule ElixirQueue.Worker do
     Agent.start_link(fn -> %{current_job: %Job{}, jobs: []} end)
   end
 
-  def get(worker, field) do
+  @spec get(pid(), atom()) :: (Job.t() | %{} | list(Job.t()) | [])
+  def get(worker, field), do:
     Agent.get(worker, fn state -> Map.get(state, field) end)
-  end
 
-  @spec perform(pid(), ElixirQueue.Job.t()) :: :ok
+  @spec idle?(pid()) :: boolean
+  def idle?(worker), do:
+    Agent.get(worker, fn state -> state.current_job end) == %Job{}
+
+  @spec perform(pid(), ElixirQueue.Job.t()) :: any()
   def perform(worker, job = %Job{mod: mod, func: func, args: args}) do
-    Agent.update(worker, &(Map.put(&1, :current_job, job)))
-
-    apply(mod, func, args)
-
+    Logger.info("worker: #{inspect(worker)}")
+    Logger.info("job: #{inspect(job)}")
+    Agent.update(worker, &Map.put(&1, :current_job, job))
+    Logger.info("Passed ONE")
+    result = apply(mod, func, args)
+    Logger.info("Passed TWO")
     jobs = Worker.get(worker, :jobs)
-    Agent.update(worker, &(Map.put(&1, :current_job, %Job{})))
-    Agent.update(worker, &(Map.put(&1, :jobs, [job | jobs])))
-
-    :ok
+    Agent.update(worker, &Map.put(&1, :current_job, %Job{}))
+    Agent.update(worker, &Map.put(&1, :jobs, [job | jobs]))
+    {:ok, result}
   end
 end

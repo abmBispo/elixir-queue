@@ -1,9 +1,9 @@
 defmodule ElixirQueue.Application do
   use Application
   alias ElixirQueue.{
-    Worker,
     WorkerSupervisor,
-    Queue
+    WorkerPool,
+    Worker
   }
 
   @impl true
@@ -12,6 +12,7 @@ defmodule ElixirQueue.Application do
     children = [
       {ElixirQueue.Queue, name: ElixirQueue.Queue},
       {DynamicSupervisor, name: ElixirQueue.WorkerSupervisor, strategy: :one_for_one},
+      {ElixirQueue.WorkerPool, name: ElixirQueue.WorkerPool},
       {ElixirQueue, []}
     ]
 
@@ -25,7 +26,8 @@ defmodule ElixirQueue.Application do
     1..:erlang.system_info(:logical_processors_online)
     |> Enum.each(fn _ ->
       {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
-      Queue.add_worker(pid)
+      WorkerPool.add_worker(pid)
     end)
+    :ok
   end
 end
