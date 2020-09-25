@@ -1,5 +1,6 @@
 defmodule ElixirQueue.Application do
   use Application
+
   alias ElixirQueue.{
     WorkerSupervisor,
     WorkerPool,
@@ -28,6 +29,7 @@ defmodule ElixirQueue.Application do
       {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
       WorkerPool.add_worker(pid)
     end)
+
     :ok
   end
 end

@@ -30,7 +30,7 @@ defmodule ElixirQueue.WorkerPool do
   @spec workers :: list()
   def workers, do: GenServer.call(__MODULE__, :workers)
 
-  @spec perform(ElixirQueue.Job.t()) :: {:ok, any}
+  @spec perform(ElixirQueue.Job.t()) :: {:ok, any} | {:error, any}
   def perform(job) do
     WorkerPool.workers()
     |> Enum.find(&Worker.idle?(&1))

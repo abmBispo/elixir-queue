@@ -18,11 +18,12 @@ defmodule ElixirQueue do
 
     case Queue.fetch() do
       {:ok, job} ->
-        {:ok, result} =
-          Task.async(fn -> WorkerPool.perform(job) end)
-          |> Task.await()
-
-        Logger.info("Result for job #{inspect(job)}: #{inspect(result)}")
+        case Task.await(Task.async(fn -> WorkerPool.perform(job) end)) do
+          {:ok, result} ->
+            Logger.info("JOB DONE SUCCESSFULLY #{inspect(job)} ====> RESULT: #{inspect(result)}")
+          {:error, err} ->
+            Logger.info("JOB FAIL #{inspect(job)} ====> ERR: #{inspect(err)}")
+        end
 
       {:error, :empty} ->
         event_loop()
