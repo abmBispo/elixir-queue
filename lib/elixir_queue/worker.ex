@@ -19,16 +19,17 @@ defmodule ElixirQueue.Worker do
 
   @spec perform(pid(), ElixirQueue.Job.t()) :: any()
   def perform(worker, job = %Job{mod: mod, func: func, args: args}) do
+    Logger.info(">>> Worker: #{inspect(worker)}")
     Agent.update(worker, fn _ -> job end)
 
-    try do
-      result = apply(mod, func, args)
-      Agent.update(worker, fn _ -> %Job{} end)
-      {:ok, result}
+    result = try do
+      {:ok, apply(mod, func, args), worker}
     rescue
-      err in UndefinedFunctionError ->
-        Agent.update(worker, fn _ -> %Job{} end)
-        {:error, err}
+      err -> {:error, err}
+    after
+      Agent.update(worker, fn _ -> %Job{} end)
     end
+
+    result
   end
 end

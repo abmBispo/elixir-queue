@@ -1,9 +1,12 @@
 defmodule ElixirQueue.WorkerPool do
+  require Logger
   use GenServer
+
   alias ElixirQueue.{
     WorkerPool,
     Worker
   }
+
   # Server side functions
   def start_link(opts) do
     name = Keyword.fetch!(opts, :name)
@@ -30,10 +33,28 @@ defmodule ElixirQueue.WorkerPool do
   @spec workers :: list()
   def workers, do: GenServer.call(__MODULE__, :workers)
 
-  @spec perform(ElixirQueue.Job.t()) :: {:ok, any} | {:error, any}
+  @spec idle_worker :: pid()
+  def idle_worker do
+    case Enum.find(WorkerPool.workers, &Worker.idle?(&1)) do
+      pid when is_pid(pid) -> pid
+      _ -> WorkerPool.idle_worker()
+    end
+  end
+
+  @spec perform(ElixirQueue.Job.t()) :: no_return()
   def perform(job) do
-    WorkerPool.workers()
-    |> Enum.find(&Worker.idle?(&1))
-    |> Worker.perform(job)
+    finished_with =
+      WorkerPool.idle_worker()
+      |> Worker.perform(job)
+
+    case finished_with do
+      {:ok, result, worker} ->
+        Logger.info(
+          "JOB DONE SUCCESSFULLY #{inspect(job)} ====> RESULT: #{inspect(result)}\n
+          Responsible worker: [#{inspect(worker)}]")
+
+      {:error, err} ->
+        Logger.info("JOB FAILED #{inspect(job)} ====> ERR: #{inspect(err)}")
+    end
   end
 end

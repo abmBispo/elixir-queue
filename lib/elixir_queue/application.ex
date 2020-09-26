@@ -17,15 +17,14 @@ defmodule ElixirQueue.Application do
       {ElixirQueue, []}
     ]
 
-    tuple = Supervisor.start_link(children, strategy: :one_for_all, name: ElixirQueue.Supervisor)
+    tuple = Supervisor.start_link(children, strategy: :one_for_one, name: ElixirQueue.Supervisor)
     start_workers()
     tuple
   end
 
   @spec start_workers :: :ok
   def start_workers do
-    1..:erlang.system_info(:logical_processors_online)
-    |> Enum.each(fn _ ->
+    1..:erlang.system_info(:logical_processors_online) |> Enum.each(fn _ ->
       {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
       WorkerPool.add_worker(pid)
     end)

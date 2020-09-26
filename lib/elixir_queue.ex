@@ -1,6 +1,5 @@
 defmodule ElixirQueue do
   use Task, restart: :permanent
-  require Logger
 
   alias ElixirQueue.{
     Queue,
@@ -14,17 +13,9 @@ defmodule ElixirQueue do
 
   @spec event_loop :: no_return
   def event_loop do
-    :timer.sleep(100)
-
     case Queue.fetch() do
       {:ok, job} ->
-        case Task.await(Task.async(fn -> WorkerPool.perform(job) end)) do
-          {:ok, result} ->
-            Logger.info("JOB DONE SUCCESSFULLY #{inspect(job)} ====> RESULT: #{inspect(result)}")
-          {:error, err} ->
-            Logger.info("JOB FAIL #{inspect(job)} ====> ERR: #{inspect(err)}")
-        end
-
+        Task.start(fn -> WorkerPool.perform(job) end)
       {:error, :empty} ->
         event_loop()
     end
