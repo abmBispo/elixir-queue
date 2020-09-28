@@ -24,7 +24,8 @@ defmodule ElixirQueue.Application do
 
   @spec start_workers :: :ok
   def start_workers do
-    1..:erlang.system_info(:logical_processors_online) |> Enum.each(fn _ ->
+    1..System.schedulers_online
+    |> Enum.each(fn _ ->
       {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
       WorkerPool.add_worker(pid)
     end)

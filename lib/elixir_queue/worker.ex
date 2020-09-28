@@ -19,13 +19,16 @@ defmodule ElixirQueue.Worker do
 
   @spec perform(pid(), ElixirQueue.Job.t()) :: any()
   def perform(worker, job = %Job{mod: mod, func: func, args: args}) do
-    Logger.info(">>> Worker: #{inspect(worker)}")
     Agent.update(worker, fn _ -> job end)
 
     result = try do
-      {:ok, apply(mod, func, args), worker}
+      out = apply(mod, func, args)
+      Logger.info("JOB DONE SUCCESSFULLY #{inspect(job)} ====> RESULT: #{inspect(out)}")
+      {:ok, out, worker}
     rescue
-      err -> {:error, err}
+      err ->
+        Logger.info("JOB FAILED #{inspect(job)} ====> ERR: #{inspect(err)}")
+        {:error, err, worker}
     after
       Agent.update(worker, fn _ -> %Job{} end)
     end

@@ -14,10 +14,8 @@ defmodule ElixirQueue do
   @spec event_loop :: no_return
   def event_loop do
     case Queue.fetch() do
-      {:ok, job} ->
-        Task.start(fn -> WorkerPool.perform(job) end)
-      {:error, :empty} ->
-        event_loop()
+      {:ok, job} -> Task.start(fn -> WorkerPool.perform(job) end)
+      {:error, :empty} -> event_loop()
     end
 
     event_loop()
