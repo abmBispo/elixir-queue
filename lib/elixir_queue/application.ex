@@ -14,7 +14,7 @@ defmodule ElixirQueue.Application do
       {ElixirQueue.Queue, name: ElixirQueue.Queue},
       {DynamicSupervisor, name: ElixirQueue.WorkerSupervisor, strategy: :one_for_one},
       {ElixirQueue.WorkerPool, name: ElixirQueue.WorkerPool},
-      {ElixirQueue, []}
+      {ElixirQueue.EventLoop, []}
     ]
 
     tuple = Supervisor.start_link(children, strategy: :one_for_one, name: ElixirQueue.Supervisor)

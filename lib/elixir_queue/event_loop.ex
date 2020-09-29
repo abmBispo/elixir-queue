@@ -1,5 +1,5 @@
-defmodule ElixirQueue do
-  use Task, restart: :permanent
+defmodule ElixirQueue.EventLoop do
+  use Task, restart: :transient
 
   alias ElixirQueue.{
     Queue,

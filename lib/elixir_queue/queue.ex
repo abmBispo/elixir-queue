@@ -15,6 +15,7 @@ defmodule ElixirQueue.Queue do
   @doc ~S"""
   Get next job to be processed
   ## Examples
+      iex> ElixirQueue.Queue.clear()
       iex> ElixirQueue.Queue.perform_later(Enum, :reverse, [[1,2,3,4,5]])
       :ok
   """
@@ -27,6 +28,7 @@ defmodule ElixirQueue.Queue do
   @doc ~S"""
   Get next job to be processed
   ## Examples
+      iex> ElixirQueue.Queue.clear()
       iex> ElixirQueue.Queue.fetch()
       {:error, :empty}
       iex> ElixirQueue.Queue.perform_later(Enum, :reverse, [[1,2,3,4,5]])
@@ -39,17 +41,18 @@ defmodule ElixirQueue.Queue do
   @spec fetch :: {:ok, any} | {:error, :empty}
   def fetch, do: GenServer.call(Queue, :fetch)
 
+  def clear, do: GenServer.call(Queue, :clear)
+
   @impl true
-  def handle_call({:perform_later, job}, _from, queue) do
-    {:reply, :ok, Tuple.append(queue, job)}
-  end
+  def handle_call({:perform_later, job}, _from, queue),
+    do: {:reply, :ok, Tuple.append(queue, job)}
 
-  def handle_call(:fetch, _from, {}) do
-    {:reply, {:error, :empty}, {}}
-  end
+  def handle_call(:fetch, _from, {}),
+    do: {:reply, {:error, :empty}, {}}
 
-  def handle_call(:fetch, _from, queue) do
-    job = elem(queue, 0)
-    {:reply, {:ok, job}, Tuple.delete_at(queue, 0)}
-  end
+  def handle_call(:fetch, _from, queue),
+    do: {:reply, {:ok, elem(queue, 0)}, Tuple.delete_at(queue, 0)}
+
+  def handle_call(:clear, _from, _queue),
+    do: {:reply, :ok, {}}
 end
