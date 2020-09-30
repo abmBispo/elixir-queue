@@ -21,14 +21,16 @@ defmodule ElixirQueue.Fake do
     3
   end
 
+  @spec populate :: :ok
   def populate do
-    for i <- 0..100_000 do
+    for i <- 0..10_000 do
       case rem(i, 3) do
         0 -> Queue.perform_later(Fake, :fake_raise, ["No reason"])
         1 -> Queue.perform_later(Fake, :task, [2])
         2 -> Queue.perform_later(Fake, :task, [3])
       end
     end
+    :ok
   end
 
   @spec spec :: %{
