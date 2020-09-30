@@ -21,17 +21,23 @@ defmodule ElixirQueue.Worker do
   def perform(worker, job = %Job{mod: mod, func: func, args: args}) do
     Agent.update(worker, fn _ -> job end)
 
-    result = try do
-      out = apply(mod, func, args)
-      Logger.info("JOB DONE SUCCESSFULLY #{inspect(job)} ====> RESULT: #{inspect(out)}")
-      {:ok, out, worker}
-    rescue
-      err ->
-        Logger.info("JOB FAILED #{inspect(job)} ====> ERR: #{inspect(err)}")
-        {:error, err, worker}
-    after
-      Agent.update(worker, fn _ -> %Job{} end)
-    end
+    result =
+      try do
+        out = apply(mod, func, args)
+
+        unless Mix.env() == :test,
+          do: Logger.info("JOB DONE SUCCESSFULLY #{inspect(job)} ====> RESULT: #{inspect(out)}")
+
+        {:ok, out, worker}
+      rescue
+        err ->
+          unless Mix.env() == :test,
+            do: Logger.info("JOB FAILED #{inspect(job)} ====> ERR: #{inspect(err)}")
+
+          {:error, err, worker}
+      after
+        Agent.update(worker, fn _ -> %Job{} end)
+      end
 
     result
   end

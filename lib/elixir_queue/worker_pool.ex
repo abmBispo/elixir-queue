@@ -73,11 +73,7 @@ defmodule ElixirQueue.WorkerPool do
 
   @spec perform(ElixirQueue.Job.t()) :: no_return()
   def perform(job) do
-    finished_with =
-      WorkerPool.idle_worker()
-      |> Worker.perform(job)
-
-    case finished_with do
+    case Worker.perform(WorkerPool.idle_worker(), job) do
       {:ok, result, worker} ->
         WorkerPool.add_successful_job(worker, job, result)
 
