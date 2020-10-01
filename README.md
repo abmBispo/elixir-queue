@@ -1,21 +1,14 @@
 # ElixirQueue
 
-**TODO: Add description**
+## Motivação
+O motivo principal pelo qual resolvi desenvolver essa fila de processos foi o aprendizado das estruturas e APIs do Erlang/OTP utilizando o Elixir. Provalvemente existem muitas outras filas de processamento de serviços em segundo plano espalhadas por ai bem mais eficientes do que esta que se encontra aqui. No entanto acredito que para quem está começando é demasiado interessante ter acesso a estruturas mais simples, tanto do ponto de vista de lógica de programação quanto da perspectiva operacional do OTP. Por isso optei por fazer desde a base um software para execução de processos de forma a conseguir explicar as tomadas de decisão e, eventualmente, ir corrigindo esse caminho conforme a comunidade demonstre que uma ou outra opção é melhor, através de _pull requests_ ou mesmo _issues_ abertas. Tenho certeza que será de grande ajuda para iniciantes e para mim o que for tratado aqui.
 
-## Installation
+## Estrutura
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `elixir_queue` to your list of dependencies in `mix.exs`:
+## Análise de comportamento assintótico
 
-```elixir
-def deps do
-  [
-    {:elixir_queue, "~> 0.1.0"}
-  ]
-end
-```
+## Análise de desempenho
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at [https://hexdocs.pm/elixir_queue](https://hexdocs.pm/elixir_queue).
+## Exemplos de uso
 
+## Melhorias necessárias
