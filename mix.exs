@@ -23,7 +23,8 @@ defmodule ElixirQueue.MixProject do
   defp deps do
     [
       {:earmark, "~> 1.2", only: :dev},
-      {:ex_doc, "~> 0.19", only: :dev}
+      {:ex_doc, "~> 0.19", only: :dev},
+      {:benchee, "~> 0.9", only: :dev}
     ]
   end
 end

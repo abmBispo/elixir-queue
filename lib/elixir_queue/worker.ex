@@ -1,44 +1,22 @@
 defmodule ElixirQueue.Worker do
-  use Agent
   require Logger
   alias ElixirQueue.Job
 
-  @spec start_link(any) :: {:error, any} | {:ok, pid}
-  @doc """
-  Starts a new worker.
-  """
-  def start_link(_opts) do
-    Agent.start_link(fn -> %Job{} end)
-  end
+  @spec perform(ElixirQueue.Job.t()) :: any()
+  def perform(job = %Job{mod: mod, func: func, args: args}) do
+    try do
+      out = apply(mod, func, args)
 
-  @spec get(pid()) :: Job.t()
-  def get(worker), do: Agent.get(worker, fn state -> state end)
+      unless Mix.env() == :test,
+        do: Logger.info("JOB DONE SUCCESSFULLY #{inspect(job)} ====> RESULT: #{inspect(out)}")
 
-  @spec idle?(pid()) :: boolean
-  def idle?(worker), do: Agent.get(worker, fn state -> state end) == %Job{}
-
-  @spec perform(pid(), ElixirQueue.Job.t()) :: any()
-  def perform(worker, job = %Job{mod: mod, func: func, args: args}) do
-    Agent.update(worker, fn _ -> job end)
-
-    result =
-      try do
-        out = apply(mod, func, args)
-
+      {:ok, out}
+    rescue
+      err ->
         unless Mix.env() == :test,
-          do: Logger.info("JOB DONE SUCCESSFULLY #{inspect(job)} ====> RESULT: #{inspect(out)}")
+          do: Logger.info("JOB FAILED #{inspect(job)} ====> ERR: #{inspect(err)}")
 
-        {:ok, out, worker}
-      rescue
-        err ->
-          unless Mix.env() == :test,
-            do: Logger.info("JOB FAILED #{inspect(job)} ====> ERR: #{inspect(err)}")
-
-          {:error, err, worker}
-      after
-        Agent.update(worker, fn _ -> %Job{} end)
-      end
-
-    result
+        {:error, err}
+    end
   end
 end

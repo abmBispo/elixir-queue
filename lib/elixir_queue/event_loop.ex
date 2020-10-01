@@ -3,7 +3,7 @@ defmodule ElixirQueue.EventLoop do
 
   alias ElixirQueue.{
     Queue,
-    WorkerPool
+    JobsPool
   }
 
   @spec start_link(any) :: {:ok, pid}
@@ -14,7 +14,7 @@ defmodule ElixirQueue.EventLoop do
   @spec event_loop :: no_return
   def event_loop do
     case Queue.fetch() do
-      {:ok, job} -> Task.start(fn -> WorkerPool.perform(job) end)
+      {:ok, job} -> JobsPool.perform(job)
       {:error, :empty} -> event_loop()
     end
 

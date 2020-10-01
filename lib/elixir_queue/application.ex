@@ -13,23 +13,10 @@ defmodule ElixirQueue.Application do
     children = [
       {ElixirQueue.Queue, name: ElixirQueue.Queue},
       {DynamicSupervisor, name: ElixirQueue.WorkerSupervisor, strategy: :one_for_one},
-      {ElixirQueue.WorkerPool, name: ElixirQueue.WorkerPool},
+      {ElixirQueue.JobsPool, name: ElixirQueue.JobsPool},
       {ElixirQueue.EventLoop, []}
     ]
 
-    tuple = Supervisor.start_link(children, strategy: :one_for_one, name: ElixirQueue.Supervisor)
-    start_workers()
-    tuple
-  end
-
-  @spec start_workers :: :ok
-  def start_workers do
-    1..System.schedulers_online
-    |> Enum.each(fn _ ->
-      {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
-      WorkerPool.add_worker(pid)
-    end)
-
-    :ok
+    Supervisor.start_link(children, strategy: :one_for_one, name: ElixirQueue.Supervisor)
   end
 end
