@@ -73,12 +73,15 @@ defmodule ElixirQueue.WorkerPool do
 
   @spec perform(ElixirQueue.Job.t()) :: no_return()
   def perform(job) do
-    case Worker.perform(WorkerPool.idle_worker(), job) do
-      {:ok, result, worker} ->
-        WorkerPool.add_successful_job(worker, job, result)
+    worker = WorkerPool.idle_worker()
+    Task.start(fn ->
+      case Worker.perform(worker, job) do
+        {:ok, result, worker} ->
+          WorkerPool.add_successful_job(worker, job, result)
 
-      {:error, err, worker} ->
-        WorkerPool.add_failed_job(worker, job, err)
-    end
+        {:error, err, worker} ->
+          WorkerPool.add_failed_job(worker, job, err)
+      end
+    end)
   end
 end
