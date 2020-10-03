@@ -3,6 +3,7 @@ defmodule ElixirQueue.WorkerPool do
   use GenServer
 
   alias ElixirQueue.{
+    WorkerSupervisor,
     WorkerPool,
     Worker
   }
@@ -15,7 +16,16 @@ defmodule ElixirQueue.WorkerPool do
 
   @impl true
   @spec init(any) :: {:ok, %{failed_jobs: [], pids: [], successful_jobs: []}}
-  def init(_opts), do: {:ok, %{pids: [], successful_jobs: [], failed_jobs: []}}
+  def init(_opts) do
+    pids =
+      for _ <- 1..System.schedulers_online() do
+        {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
+        ref = Process.monitor(pid)
+        {pid, ref}
+      end
+
+    {:ok, %{pids: pids, successful_jobs: [], failed_jobs: []}}
+  end
 
   @impl true
   def handle_call({:add_worker, pid}, _from, state = %{pids: workers}) do
@@ -35,11 +45,31 @@ defmodule ElixirQueue.WorkerPool do
   end
 
   def handle_call({:add_successful_job, worker, job, result}, _from, state) do
-    {:reply, :ok, Map.put(state, :successful_jobs, [{worker, job, result} | state.successful_jobs])}
+    {:reply, :ok,
+     Map.put(state, :successful_jobs, [{worker, job, result} | state.successful_jobs])}
   end
 
   def handle_call({:add_failed_job, worker, job, err}, _from, state) do
     {:reply, :ok, Map.put(state, :failed_jobs, [{worker, job, err} | state.failed_jobs])}
+  end
+
+  @impl true
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, %{
+        pids: pids,
+        successful_jobs: successful_jobs,
+        failed_jobs: failed_jobs
+      }) do
+    {:ok, new_pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
+    new_ref = Process.monitor(new_pid)
+
+    pids = Enum.filter(pids, &(&1 != pid))
+
+    {:noreply,
+     %{pids: [{pid, new_ref} | pids], successful_jobs: successful_jobs, failed_jobs: failed_jobs}}
+  end
+
+  def handle_info(_msg, state) do
+    {:noreply, state}
   end
 
   # Client side functions
@@ -74,6 +104,7 @@ defmodule ElixirQueue.WorkerPool do
   @spec perform(ElixirQueue.Job.t()) :: no_return()
   def perform(job) do
     worker = WorkerPool.idle_worker()
+
     Task.start(fn ->
       case Worker.perform(worker, job) do
         {:ok, result, worker} ->

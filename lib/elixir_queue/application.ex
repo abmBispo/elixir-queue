@@ -1,12 +1,6 @@
 defmodule ElixirQueue.Application do
   use Application
 
-  alias ElixirQueue.{
-    WorkerSupervisor,
-    WorkerPool,
-    Worker
-  }
-
   @impl true
   @spec start(any, any) :: {:error, any} | {:ok, pid}
   def start(_type, _args) do
@@ -17,19 +11,6 @@ defmodule ElixirQueue.Application do
       {ElixirQueue.EventLoop, []}
     ]
 
-    tuple = Supervisor.start_link(children, strategy: :one_for_one, name: ElixirQueue.Supervisor)
-    start_workers()
-    tuple
-  end
-
-  @spec start_workers :: :ok
-  def start_workers do
-    1..System.schedulers_online
-    |> Enum.each(fn _ ->
-      {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
-      WorkerPool.add_worker(pid)
-    end)
-
-    :ok
+    Supervisor.start_link(children, strategy: :one_for_one, name: ElixirQueue.Supervisor)
   end
 end
