@@ -54,23 +54,32 @@ defmodule ElixirQueue.WorkerPool do
   end
 
   @impl true
-  def handle_info({:DOWN, _ref, :process, pid, _reason}, %{
+  def handle_info({:DOWN, _ref, :process, dead_worker, _reason}, %{
         pids: pids,
         successful_jobs: successful_jobs,
         failed_jobs: failed_jobs
       }) do
-    {:ok, new_pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
-    new_ref = Process.monitor(new_pid)
+    {:ok, worker} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
+    worker_reference = Process.monitor(worker)
+    pids = Enum.filter(pids, &(&1 != dead_worker))
 
-    pids = Enum.filter(pids, &(&1 != pid))
+    unless Mix.env() == :test,
+      do:
+        Logger.error("""
+          Worker #{inspect(dead_worker)} received EXIT SIGNAL.
+          It have been replaced by #{inspect(worker)} worker.
+          All the job progress was lost and job failed.
+        """)
 
     {:noreply,
-     %{pids: [{pid, new_ref} | pids], successful_jobs: successful_jobs, failed_jobs: failed_jobs}}
+     %{
+       pids: [{worker, worker_reference} | pids],
+       successful_jobs: successful_jobs,
+       failed_jobs: failed_jobs
+     }}
   end
 
-  def handle_info(_msg, state) do
-    {:noreply, state}
-  end
+  def handle_info(_msg, state), do: {:noreply, state}
 
   # Client side functions
   @spec add_worker(pid()) :: :ok
