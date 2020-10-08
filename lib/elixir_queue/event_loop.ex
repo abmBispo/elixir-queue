@@ -13,6 +13,8 @@ defmodule ElixirQueue.EventLoop do
 
   @spec event_loop :: no_return
   def event_loop do
+
+    :timer.sleep(1)
     case Queue.fetch() do
       {:ok, job} -> WorkerPool.perform(job)
       {:error, :empty} -> event_loop()

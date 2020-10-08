@@ -1,44 +1,44 @@
 defmodule ElixirQueue.Worker do
-  use Agent, restart: :temporary
+  use GenServer, restart: :temporary
   require Logger
+
   alias ElixirQueue.Job
 
-  @spec start_link(any) :: {:error, any} | {:ok, pid}
   @doc """
   Starts a new worker.
   """
-  def start_link(_opts) do
-    Agent.start_link(fn -> %Job{} end)
+  @spec start_link(any) :: {:error, any} | {:ok, pid}
+  def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
+
+  @impl true
+  @spec init(any) :: {:ok, Job.t()}
+  def init(_opts), do: {:ok, %Job{}}
+
+  @impl true
+  def handle_call({:start, job}, _from, _state),
+    do: {:reply, :ok, job}
+
+  def handle_call({:perform, %Job{mod: mod, func: func, args: args}}, _from, state),
+    do: {:reply, apply(mod, func, args), state}
+
+  def handle_call(:halt, _from, _state),
+    do: {:reply, :ok, %Job{}}
+
+  def handle_call(:idle?, _from, state),
+    do: {:reply, state == %Job{}, state}
+
+  @spec perform(pid(), Job.t()) :: any()
+  def perform(worker, job) do
+    GenServer.call(worker, {:start, job})
+    result = GenServer.call(worker, {:perform, job})
+    GenServer.call(worker, :halt)
+
+    unless Mix.env() == :test,
+      do: Logger.info("JOB DONE SUCCESSFULLY #{inspect(job)} ====> RESULT: #{inspect(result)}")
+
+    {:ok, result}
   end
 
-  @spec get(pid()) :: Job.t()
-  def get(worker), do: Agent.get(worker, fn state -> state end)
-
-  @spec idle?(pid()) :: boolean
-  def idle?(worker), do: Agent.get(worker, fn state -> state end) == %Job{}
-
-  @spec perform(pid(), ElixirQueue.Job.t()) :: any()
-  def perform(worker, job = %Job{mod: mod, func: func, args: args}) do
-    Agent.update(worker, fn _ -> job end)
-
-    result =
-      try do
-        out = apply(mod, func, args)
-
-        unless Mix.env() == :test,
-          do: Logger.info("JOB DONE SUCCESSFULLY #{inspect(job)} ====> RESULT: #{inspect(out)}")
-
-        {:ok, out, worker}
-      rescue
-        err ->
-          unless Mix.env() == :test,
-            do: Logger.info("JOB FAILED #{inspect(job)} ====> ERR: #{inspect(err)}")
-
-          {:error, err, worker}
-      after
-        Agent.update(worker, fn _ -> %Job{} end)
-      end
-
-    result
-  end
+  @spec idle?(pid()) :: any
+  def idle?(worker), do: GenServer.call(worker, :idle?)
 end
