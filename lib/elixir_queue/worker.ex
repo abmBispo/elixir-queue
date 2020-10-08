@@ -34,7 +34,7 @@ defmodule ElixirQueue.Worker do
     GenServer.call(worker, :halt)
 
     unless Mix.env() == :test,
-      do: Logger.info("JOB DONE SUCCESSFULLY #{inspect(job)} ====> RESULT: #{inspect(result)}")
+      do: Logger.info("JOB #{inspect(job)} DONE SUCCESSFULLY BY #{inspect(worker)} ====> RESULT: #{inspect(result)}")
 
     {:ok, result}
   end

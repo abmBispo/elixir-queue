@@ -11,8 +11,9 @@ defmodule ElixirQueue.Fake do
 
   @spec task(2 | 3) :: :sorted
   def task(2) do
-    Enum.to_list(2_000_000..1)
-    |> Enum.sort()
+    :timer.sleep(2000)
+    # Enum.to_list(2_000_000..1)
+    # |> Enum.sort()
     :sorted
   end
 
@@ -24,8 +25,8 @@ defmodule ElixirQueue.Fake do
 
   @spec populate :: :ok
   def populate do
-    for _ <- 0..999, do: Queue.perform_later(Fake, :task, [3])
-    :ok  
+    for _ <- 0..999, do: Queue.perform_later(Fake, :task, [2])
+    :ok
   end
 
   @spec spec :: %{

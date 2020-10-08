@@ -11,6 +11,6 @@ defmodule ElixirQueue.Application do
       {ElixirQueue.EventLoop, []}
     ]
 
-    Supervisor.start_link(children, strategy: :one_for_one, name: ElixirQueue.Supervisor)
+    Supervisor.start_link(children, strategy: :rest_for_one, name: ElixirQueue.Supervisor)
   end
 end
