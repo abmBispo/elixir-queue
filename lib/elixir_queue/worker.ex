@@ -1,5 +1,5 @@
 defmodule ElixirQueue.Worker do
-  use Agent
+  use Agent, restart: :temporary
   require Logger
   alias ElixirQueue.Job
 

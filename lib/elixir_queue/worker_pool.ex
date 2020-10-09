@@ -27,10 +27,6 @@ defmodule ElixirQueue.WorkerPool do
   end
 
   @impl true
-  def handle_call({:add_worker, pid}, _from, state = %{pids: workers}) do
-    {:reply, :ok, Map.put(state, :pids, [pid | workers])}
-  end
-
   def handle_call(:workers, _from, state) do
     {:reply, state.pids, state}
   end
@@ -51,10 +47,16 @@ defmodule ElixirQueue.WorkerPool do
     {:reply, :ok, Map.put(state, :failed_jobs, [{worker, job, err} | state.failed_jobs])}
   end
 
-  # Client side functions
-  @spec add_worker(pid()) :: :ok
-  def add_worker(pid), do: GenServer.call(__MODULE__, {:add_worker, pid})
+  @impl true
+  def handle_info({:DOWN, _, :process, dead_worker, _}, state) do
+    {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
+    Process.monitor(pid)
+    pids = Enum.filter(state.pids, &(&1 != dead_worker))
 
+    {:noreply, Map.put(state, :pids, [pid | pids])}
+  end
+
+  # Client side functions
   @spec workers :: list()
   def workers, do: GenServer.call(__MODULE__, :workers)
 
