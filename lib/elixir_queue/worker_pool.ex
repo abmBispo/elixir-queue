@@ -3,6 +3,7 @@ defmodule ElixirQueue.WorkerPool do
   use GenServer
 
   alias ElixirQueue.{
+    WorkerSupervisor,
     WorkerPool,
     Worker
   }
@@ -15,7 +16,15 @@ defmodule ElixirQueue.WorkerPool do
 
   @impl true
   @spec init(any) :: {:ok, %{failed_jobs: [], pids: [], successful_jobs: []}}
-  def init(_opts), do: {:ok, %{pids: [], successful_jobs: [], failed_jobs: []}}
+  def init(_opts) do
+    pids = for _ <- 1..System.schedulers_online do
+      {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
+      Process.monitor(pid)
+      pid
+    end
+
+    {:ok, %{pids: pids, successful_jobs: [], failed_jobs: []}}
+  end
 
   @impl true
   def handle_call({:add_worker, pid}, _from, state = %{pids: workers}) do
