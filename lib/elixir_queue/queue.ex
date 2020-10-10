@@ -13,7 +13,7 @@ defmodule ElixirQueue.Queue do
   def init(_opts), do: {:ok, {}}
 
   @doc ~S"""
-  Get next job to be processed
+  Enqueues job to be processed
   ## Examples
       iex> ElixirQueue.Queue.clear()
       iex> ElixirQueue.Queue.perform_later(Enum, :reverse, [[1,2,3,4,5]])
@@ -21,7 +21,20 @@ defmodule ElixirQueue.Queue do
   """
   @spec perform_later(atom, atom, list(any)) :: :ok
   def perform_later(mod, func, args \\ []) do
-    job = %Job{mod: mod, func: func, args: args}
+    job = %Job{mod: mod, func: func, args: args, retry_attempts: 0}
+    GenServer.call(Queue, {:perform_later, job})
+  end
+
+  @doc ~S"""
+  Enqueues job to be processed
+  ## Examples
+      iex> ElixirQueue.Queue.clear()
+      iex> job = %ElixirQueue.Job{mod: Enum, func: :reverse, args: [[1,2,3,4,5]]}
+      iex> ElixirQueue.Queue.perform_later(job)
+      :ok
+  """
+  @spec perform_later(ElixirQueue.Job.t()) :: :ok
+  def perform_later(job = %Job{}) do
     GenServer.call(Queue, {:perform_later, job})
   end
 
@@ -41,6 +54,7 @@ defmodule ElixirQueue.Queue do
   @spec fetch :: {:ok, any} | {:error, :empty}
   def fetch, do: GenServer.call(Queue, :fetch)
 
+  @spec clear :: :ok
   def clear, do: GenServer.call(Queue, :clear)
 
   @impl true

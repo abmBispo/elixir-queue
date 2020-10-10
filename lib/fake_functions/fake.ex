@@ -17,7 +17,6 @@ defmodule ElixirQueue.Fake do
   end
 
   def task(3) do
-    # :timer.sleep(3000)
     Enum.to_list(3_000_000..1)
     |> Enum.sort()
     :sorted

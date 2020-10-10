@@ -5,7 +5,8 @@ defmodule ElixirQueue.WorkerPool do
   alias ElixirQueue.{
     WorkerSupervisor,
     WorkerPool,
-    Worker
+    Worker,
+    Queue
   }
 
   # Server side functions
@@ -17,11 +18,14 @@ defmodule ElixirQueue.WorkerPool do
   @impl true
   @spec init(any) :: {:ok, %{failed_jobs: [], pids: [], successful_jobs: []}}
   def init(_opts) do
-    pids = for _ <- 1..System.schedulers_online do
-      {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
-      Process.monitor(pid)
-      pid
-    end
+    pids =
+      for _ <- 1..System.schedulers_online() do
+        {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
+        Process.monitor(pid)
+        pid
+      end
+
+    :ets.new(:worker_backup, [:set, :protected, :named_table])
 
     {:ok, %{pids: pids, successful_jobs: [], failed_jobs: []}}
   end
@@ -40,20 +44,45 @@ defmodule ElixirQueue.WorkerPool do
   end
 
   def handle_call({:add_successful_job, worker, job, result}, _from, state) do
-    {:reply, :ok, Map.put(state, :successful_jobs, [{worker, job, result} | state.successful_jobs])}
+    {:reply, :ok,
+     Map.put(state, :successful_jobs, [{worker, job, result} | state.successful_jobs])}
   end
 
   def handle_call({:add_failed_job, worker, job, err}, _from, state) do
     {:reply, :ok, Map.put(state, :failed_jobs, [{worker, job, err} | state.failed_jobs])}
   end
 
+  def handle_call({:backup_worker, worker, job}, _from, state) do
+    :ets.insert(:worker_backup, {worker, job})
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:clean_worker_backup, worker}, _from, state) do
+    :ets.delete(:worker_backup, worker)
+    {:reply, :ok, state}
+  end
+
   @impl true
-  def handle_info({:DOWN, _, :process, dead_worker, _}, state) do
+  def handle_info({:DOWN, _, :process, dead_worker, reason}, state) do
     {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
     Process.monitor(pid)
     pids = Enum.filter(state.pids, &(&1 != dead_worker))
 
-    {:noreply, Map.put(state, :pids, [pid | pids])}
+    {^dead_worker, backuped_job} =
+      :ets.lookup(:worker_backup, dead_worker)
+      |> List.first()
+
+    backuped_job = Map.put(backuped_job, :retry_attempts, backuped_job.retry_attempts + 1)
+
+    state =
+      state
+      |> Map.put(:pids, [pid | pids])
+      |> Map.put(:failed_jobs, [{dead_worker, backuped_job, reason} | state.failed_jobs])
+
+    if backuped_job.retry_attempts < Application.fetch_env!(:elixir_queue, :retries),
+      do: Queue.perform_later(backuped_job)
+
+    {:noreply, state}
   end
 
   # Client side functions
@@ -66,13 +95,17 @@ defmodule ElixirQueue.WorkerPool do
   @spec successful_jobs :: list()
   def successful_jobs, do: GenServer.call(__MODULE__, :successful_jobs)
 
-  @spec add_successful_job(pid(), ElixirQueue.Job.t(), any) :: :ok
-  def add_successful_job(worker, job, result),
+  @spec add_successful_job({pid(), ElixirQueue.Job.t(), any}) :: :ok
+  def add_successful_job({worker, job, result}),
     do: GenServer.call(__MODULE__, {:add_successful_job, worker, job, result})
 
-  @spec add_failed_job(pid(), ElixirQueue.Job.t(), any) :: :ok
-  def add_failed_job(worker, job, err),
-    do: GenServer.call(__MODULE__, {:add_failed_job, worker, job, err})
+  @spec backup_worker(pid(), ElixirQueue.Job.t()) :: true
+  def backup_worker(worker, job),
+    do: GenServer.call(__MODULE__, {:backup_worker, worker, job})
+
+  @spec clean_worker_backup(pid()) :: true
+  def clean_worker_backup(worker),
+    do: GenServer.call(__MODULE__, {:clean_worker_backup, worker})
 
   @spec idle_worker :: pid()
   def idle_worker do
@@ -86,13 +119,8 @@ defmodule ElixirQueue.WorkerPool do
   def perform(job) do
     worker = WorkerPool.idle_worker()
     Task.start(fn ->
-      case Worker.perform(worker, job) do
-        {:ok, result, worker} ->
-          WorkerPool.add_successful_job(worker, job, result)
-
-        {:error, err, worker} ->
-          WorkerPool.add_failed_job(worker, job, err)
-      end
+      Worker.perform(worker, job)
+      |> WorkerPool.add_successful_job()
     end)
   end
 end

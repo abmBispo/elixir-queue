@@ -15,6 +15,9 @@ defmodule ElixirQueue.MixProject do
   def application do
     [
       extra_applications: [:logger],
+      env: [
+        retries: 3
+      ],
       mod: {ElixirQueue.Application, []}
     ]
   end
