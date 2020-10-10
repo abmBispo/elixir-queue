@@ -25,7 +25,7 @@ defmodule ElixirQueue.Fake do
   @spec populate :: :ok
   def populate do
     for _ <- 0..999, do: Queue.perform_later(Fake, :task, [3])
-    :ok  
+    :ok
   end
 
   @spec spec :: %{

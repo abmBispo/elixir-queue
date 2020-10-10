@@ -5,7 +5,8 @@ defmodule ElixirQueue.WorkerPool do
   alias ElixirQueue.{
     WorkerSupervisor,
     WorkerPool,
-    Worker
+    Worker,
+    Queue
   }
 
   def start_link(opts) do
@@ -17,60 +18,65 @@ defmodule ElixirQueue.WorkerPool do
   @spec init(any) :: {:ok, %{failed_jobs: [], pids: [], successful_jobs: []}}
   def init(_opts) do
     pids =
-Fail proff      for _ <- 1..Application.fetch_env!(:elixir_queue, :workers) do
+      for _ <- 1..Application.fetch_env!(:elixir_queue, :workers) do
         {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
-        ref = Process.monitor(pid)
-        {pid, ref}
+        Process.monitor(pid)
+        pid
       end
+
+    :ets.new(:worker_backup, [:set, :protected, :named_table])
 
     {:ok, %{pids: pids, successful_jobs: [], failed_jobs: []}}
   end
 
-  # Server side functions
   @impl true
-  def handle_call(:workers, _from, state), do: {:reply, Enum.map(state.pids, &elem(&1, 0)), state}
+  def handle_call(:workers, _from, state) do
+    {:reply, state.pids, state}
+  end
 
   def handle_call(:failed_jobs, _from, state), do: {:reply, state.failed_jobs, state}
 
   def handle_call(:successful_jobs, _from, state), do: {:reply, state.successful_jobs, state}
 
-  def handle_call({:add_successful_job, worker, job, result}, _from, state),
-    do: {
-      :reply,
-      :ok,
-      Map.put(state, :successful_jobs, [{worker, job, result} | state.successful_jobs])
-    }
-
-  def handle_call({:add_failed_job, worker, job, err}, _from, state),
-    do: {:reply, :ok, Map.put(state, :failed_jobs, [{worker, job, err} | state.failed_jobs])}
-
-  @impl true
-  def handle_info({:DOWN, _ref, :process, dead_worker, reason}, state) do
-    {:ok, worker} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
-    worker_reference = Process.monitor(worker)
-    pids = Enum.filter(state.pids, &(&1 != dead_worker))
-
-    reason |> IO.inspect(label: "reason")
-
-    unless Mix.env() == :test,
-      do: Logger.error("Unexpected worker error:
-          Worker #{inspect(dead_worker)} received EXIT SIGNAL.
-          It have been replaced by #{inspect(worker)} worker.
-          All the job progress was lost and job failed.
-          By default job returned to the end of queue and will be performed again later.
-        ")
-
-    {:noreply, Map.put(state, :pids, [{worker, worker_reference} | pids])}
+  def handle_call({:add_successful_job, worker, job, result}, _from, state) do
+    {:reply, :ok,
+     Map.put(state, :successful_jobs, [{worker, job, result} | state.successful_jobs])}
   end
 
-  def handle_info(_msg, state),
-    do: {:noreply, state}
+  def handle_call({:backup_worker, worker, job}, _from, state) do
+    :ets.insert(:worker_backup, {worker, job})
+    {:reply, :ok, state}
+  end
 
-  # Client side functions #
+  def handle_call({:clean_worker_backup, worker}, _from, state) do
+    :ets.delete(:worker_backup, worker)
+    {:reply, :ok, state}
+  end
 
-  @doc """
-  Returns _workers_ `PID`s kept in the state.
-  """
+  @impl true
+  def handle_info({:DOWN, _, :process, dead_worker, reason}, state) do
+    {:ok, pid} = DynamicSupervisor.start_child(WorkerSupervisor, Worker)
+    Process.monitor(pid)
+    pids = Enum.filter(state.pids, &(&1 != dead_worker))
+
+    {^dead_worker, backuped_job} =
+      :ets.lookup(:worker_backup, dead_worker)
+      |> List.first()
+
+    backuped_job = Map.put(backuped_job, :retry_attempts, backuped_job.retry_attempts + 1)
+
+    state =
+      state
+      |> Map.put(:pids, [pid | pids])
+      |> Map.put(:failed_jobs, [{dead_worker, backuped_job, reason} | state.failed_jobs])
+
+    if backuped_job.retry_attempts < Application.fetch_env!(:elixir_queue, :retries),
+      do: Queue.perform_later(backuped_job)
+
+    {:noreply, state}
+  end
+
+  # Client side functions
   @spec workers :: list()
   def workers, do: GenServer.call(__MODULE__, :workers)
 
@@ -83,13 +89,17 @@ Fail proff      for _ <- 1..Application.fetch_env!(:elixir_queue, :workers) do
   @spec successful_jobs :: list()
   def successful_jobs, do: GenServer.call(__MODULE__, :successful_jobs)
 
-  @spec add_successful_job(pid(), ElixirQueue.Job.t(), any) :: :ok
-  def add_successful_job(worker, job, result),
+  @spec add_successful_job({pid(), ElixirQueue.Job.t(), any}) :: :ok
+  def add_successful_job({worker, job, result}),
     do: GenServer.call(__MODULE__, {:add_successful_job, worker, job, result})
 
-  @spec add_failed_job(pid(), ElixirQueue.Job.t(), any) :: :ok
-  def add_failed_job(worker, job, err),
-    do: GenServer.call(__MODULE__, {:add_failed_job, worker, job, err})
+  @spec backup_worker(pid(), ElixirQueue.Job.t()) :: true
+  def backup_worker(worker, job),
+    do: GenServer.call(__MODULE__, {:backup_worker, worker, job})
+
+  @spec clean_worker_backup(pid()) :: true
+  def clean_worker_backup(worker),
+    do: GenServer.call(__MODULE__, {:clean_worker_backup, worker})
 
   @spec idle_worker :: pid()
   def idle_worker do
@@ -102,10 +112,9 @@ Fail proff      for _ <- 1..Application.fetch_env!(:elixir_queue, :workers) do
   @spec perform(ElixirQueue.Job.t()) :: no_return()
   def perform(job) do
     worker = WorkerPool.idle_worker()
-
     Task.start(fn ->
-      {:ok, result} = Worker.perform(worker, job)
-      WorkerPool.add_successful_job(worker, job, result)
+      Worker.perform(worker, job)
+      |> WorkerPool.add_successful_job()
     end)
   end
 end

@@ -1,44 +1,45 @@
 defmodule ElixirQueue.Worker do
-  use GenServer, restart: :temporary
+  use Agent, restart: :temporary
   require Logger
 
-  alias ElixirQueue.Job
+  alias ElixirQueue.{
+    Job,
+    WorkerPool
+  }
 
+  @spec start_link(any) :: {:error, any} | {:ok, pid}
   @doc """
   Starts a new worker.
   """
-  @spec start_link(any) :: {:error, any} | {:ok, pid}
-  def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
+  def start_link(_opts) do
+    Agent.start_link(fn -> %Job{} end)
+  end
 
-  @impl true
-  @spec init(any) :: {:ok, Job.t()}
-  def init(_opts), do: {:ok, %Job{}}
+  @spec get(pid()) :: Job.t()
+  def get(worker), do: Agent.get(worker, fn state -> state end)
 
-  @impl true
-  def handle_call({:start, job}, _from, _state),
-    do: {:reply, :ok, job}
+  @spec idle?(pid()) :: boolean
+  def idle?(worker), do: Agent.get(worker, fn state -> state end) == %Job{}
 
-  def handle_call({:perform, %Job{mod: mod, func: func, args: args}}, _from, state),
-    do: {:reply, apply(mod, func, args), state}
-
-  def handle_call(:halt, _from, _state),
-    do: {:reply, :ok, %Job{}}
-
-  def handle_call(:idle?, _from, state),
-    do: {:reply, state == %Job{}, state}
-
-  @spec perform(pid(), Job.t()) :: any()
-  def perform(worker, job) do
-    GenServer.call(worker, {:start, job})
-    result = GenServer.call(worker, {:perform, job})
-    GenServer.call(worker, :halt)
+  @spec perform(pid(), ElixirQueue.Job.t()) :: any()
+  def perform(worker, job = %Job{mod: mod, func: func, args: args}) do
+    start_job(worker, job)
+    result = apply(mod, func, args)
+    end_job(worker)
 
     unless Mix.env() == :test,
       do: Logger.info("JOB DONE SUCCESSFULLY #{inspect(job)} ====> RESULT: #{inspect(result)}")
 
-    {:ok, result}
+    {worker, job, result}
   end
 
-  @spec idle?(pid()) :: any
-  def idle?(worker), do: GenServer.call(worker, :idle?)
+  defp start_job(worker, job) do
+    Agent.update(worker, fn _ -> job end)
+    WorkerPool.backup_worker(worker, job)
+  end
+
+  defp end_job(worker) do
+    WorkerPool.clean_worker_backup(worker)
+    Agent.update(worker, fn _ -> %Job{} end)
+  end
 end

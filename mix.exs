@@ -15,7 +15,10 @@ defmodule ElixirQueue.MixProject do
   def application do
     [
       extra_applications: [:logger],
-      env: [workers: System.schedulers_online()],
+      env: [
+        retries: 3,
+        workers: System.schedulers_online()
+      ],
       mod: {ElixirQueue.Application, []}
     ]
   end
