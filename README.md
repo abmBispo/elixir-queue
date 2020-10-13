@@ -5,7 +5,7 @@ O motivo principal pelo qual resolvi desenvolver essa fila de processos foi o ap
 
 ## Estrutura
 ### Fluxo/Diagrama da aplicação
-![Diagrama de fluxo de aplicação](https://octodex.github.com/images/yaktocat.png)
+![Diagrama de fluxo de aplicação](https://raw.githubusercontent.com/abmBispo/elixir-queue/master/ElixirQueue.png)
 
 ### ElixirQueue.Application
 A `Application`desta fila de processos supervisiona os processos que irão criar/consumir a fila. Eis os filhos da `ElixirQueue.Supervisor`:
