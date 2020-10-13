@@ -5,6 +5,7 @@ O motivo principal pelo qual resolvi desenvolver essa fila de processos foi o ap
 
 ## Estrutura
 ### Fluxo/Diagrama da aplicação
+Abaixo um diagrama completo do fluxo de dados e possibilidades de acontecimentos do sistema.
 ![Diagrama de fluxo de aplicação](https://raw.githubusercontent.com/abmBispo/elixir-queue/master/ElixirQueue.png)
 
 ### ElixirQueue.Application
