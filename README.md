@@ -21,7 +21,7 @@ children = [
 Os filhos, de cima para baixo, representam as seguintes estruturas: `ElixirQueue.Queue` é o `GenServer` que guarda o estado da fila numa tupla; `ElixirQueue.WorkerSupervisor`é o `DynamicSupervisor` dos _workers_ adicionados dinamicamente sempre igual ou menor que o número de `schedulers` onlines; `ElixirQueue.WorkerPool`, o processo responsável por guardar os `pids` dos _workers_ e os _jobs_ executados, quer seja com sucesso ou falha; e por último o `ElixirQueue.EventLoop` que é a `Task` que "escuta" as mudanças na `ElixirQueue.Queue` (ou seja, na fila de processos) e retira _jobs_ para serem executados. O funcionamento específico de cada módulo eu explicarei conforme for me parecendo útil.
 
 ### ElixirQueue.EventLoop
-Eis aqui o processo que controla a inserção de elementos na fila. Um _event loop_ por padrão é uma função que executa numa iteração/recursão _pseudo infinita_, uma vez que não existe a intenção de se quebrar o _loop_. A cada ciclo o _loop_ busca _jobs_ adicionados na fila - ou seja, de certa forma o `ElixirQueue.EventLoop` "escuta" as alterações que ocorreram na fila e reage a partir desses eventos - e os direciona ao `ElixirQueue.WorkerPool` para serem executados. Este módulo assume o _behaviour_ de `Task` e sua única função (`event_loop/0`) não retorna nenhum valor tendo em vista que é um _loop_ eterno: ela busca da fila algum elemento e pode receber ou uma tupla `{:ok, job}` com a a tarefa a ser realizada ou uma tupla `{:error, :empty}` para caso a fila esteja vazia; no primeiro caso ele envia para o `ElixirQueue.WorkerPool` a tarefa e executa `event_loop/0` novamente; no segundo caso ele apenas executa a própria função recursivamente, continuando o loop até encontrar algum evento relevante (inserção de elemento na fila).
+Eis aqui o processo que controla a retirada de elementos da fila. Um _event loop_ por padrão é uma função que executa numa iteração/recursão _pseudo infinita_, uma vez que não existe a intenção de se quebrar o _loop_. A cada ciclo o _loop_ busca _jobs_ adicionados na fila - ou seja, de certa forma o `ElixirQueue.EventLoop` "escuta" as alterações que ocorreram na fila e reage a partir desses eventos - os direciona ao `ElixirQueue.WorkerPool` para serem executados. Este módulo assume o _behaviour_ de `Task` e sua única função (`event_loop/0`) não retorna nenhum valor tendo em vista que é um _loop_ eterno: ela busca da fila algum elemento e pode receber ou uma tupla `{:ok, job}` com a a tarefa a ser realizada ou uma tupla `{:error, :empty}` para caso a fila esteja vazia; no primeiro caso ele envia para o `ElixirQueue.WorkerPool` a tarefa e executa `event_loop/0` novamente; no segundo caso ele apenas executa a própria função recursivamente, continuando o loop até encontrar algum evento relevante (inserção de elemento na fila).
 
 ### ElixirQueue.Queue
 O módulo `ElixirQueue.Queue` guarda o coração do sistema. Aqui os _jobs_ são enfileirados para serem consumidos mais tarde pelos _workers_. É um `GenServer` sob a supervisão da `ElixirQueue.Application`, que guarda uma tupla como estado e nessa tupla estão guardados os jobs - para entender o porquê eu preferi por uma tupla ao invés de uma lista encadeada (`List`), mais abaixo em **Análise de Desempenho** está explicado. A `Queue` é uma estrutura bem simples, com funções triviais que basicamente limpam, buscam o primeiro elemento da fila para ser executado e insere um elemento ao fim da fila, de forma a ser executado mais tarde, conforme inserção.
@@ -42,8 +42,6 @@ Neste módulo temos os atores responsáveis por tomar os _jobs_ e executá-los. 
 Como ficou claro na explicação, não existe nenhum ponto da trilha de execução dos _jobs_ onde nos preocupamos com a questão: o que acontece se uma função mal feita for passada como _job_ para a fila de execução, _ou até mesmo!_, o que ocorre caso algum processo `Agent` `Worker` simplesmente corromper a memória e morrer? Pois bem, na intenção de escrever o código da forma mais perene possível, talvez o mais _Elixir like_ o possível, o que foi feito é justamente adicionar garantias de que se os processos falharem (e falharão!) o sistema consiga reagir de tal forma que mitigue os erros.
 
 Na ocasião da falha de algum worker que acarrete em sua morte via _EXIT signal_ o `WorkerPool`, que monitora todos os seus workers via `Process.monitor`, repõe este worker morto por outro, adicionando-o ao `WorkerSupervisor`. Com isso também remove o `PID` do `Worker` morto da lista de `PID`s e adiciona o novo. Porém não para por ai: o `WorkerPool` checa por algum backup criado do `Worker` morto e, encontrando, repõe o _job_ na fila com seu valor de _attempt_retry_ adicionado de um. O `WorkerPool` sempre irá adicionar o _job_ novamente na fila uma quantidade pré-determinada de vezes, definida no arquivo `mix.exs`, no _environment_ da _application_. 
-
-## Análise de comportamento assintótico
 
 ## Análise de desempenho
 ### Por que `Tuple` ao invés de `List`
@@ -76,6 +74,26 @@ Insert element at end of tuple              4.89 K
 Insert element at end of linked list        1.24 K - 3.95x slower +603.85 μs
 ```
 
+### Teste de estresse
+Preparei um teste de estresse para a aplicação que enfileira 1000 _fake jobs_, cada um ordenando uma `List` reversamente ordenada com 3 milhões de elementos, utilizando o `Enum.sort/1` (de acordo com a documentação, o algoritmo é um _merge sort_). Para executá-lo basta entrar no terminal via `iex -S mix` e rodar `ElixirQueue.Fake.populate`; a execução leva alguns minutos (e pelo menos uns 2gb de RAM), e depois você pode conferir os resultados com `ElixirQueue.Fake.spec`.
+
 ## Exemplos de uso
+Para ver a fila de processos funcionando basta executar `iex -S mix` na raiz do projeto e utilizar os comandos abaixo. A menos que você esteja em modo `test`, você verá _logs_ de informação sobre a execução do _job_.
+
+### ElixirQueue.Queue.perform_later/1
+É possível construir a _struct_ do _job_ manualmente e passá-lo para a fila.
+```ex
+iex> job = %ElixirQueue.Job{mod: Enum, func: :reverse, args: [[1,2,3,4,5]]}
+iex> ElixirQueue.Queue.perform_later(job)
+:ok
+```
+
+### ElixirQueue.Queue.perform_later/3
+Além disso também podemos passar manualmente os valores do módulo, função e argumentos para `perform_later/3`.
+```ex
+iex> ElixirQueue.Queue.clear()
+iex> ElixirQueue.Queue.perform_later(Enum, :reverse, [[1,2,3,4,5]])
+:ok
+```
 
 ## Melhorias necessárias
