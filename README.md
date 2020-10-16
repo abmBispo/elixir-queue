@@ -91,9 +91,6 @@ iex> ElixirQueue.Queue.perform_later(job)
 ### ElixirQueue.Queue.perform_later/3
 Além disso também podemos passar manualmente os valores do módulo, função e argumentos para `perform_later/3`.
 ```ex
-iex> ElixirQueue.Queue.clear()
 iex> ElixirQueue.Queue.perform_later(Enum, :reverse, [[1,2,3,4,5]])
 :ok
 ```
-
-## Melhorias necessárias
