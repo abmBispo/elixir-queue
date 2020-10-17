@@ -7,13 +7,13 @@ defmodule ElixirQueue.FakeTest do
     :ok = Application.start(:elixir_queue)
   end
 
-  test "Fake.fake_raise/0 should raise a RuntimeError" do
+  test "Fake.fake_raise/1 should raise a RuntimeError" do
     assert_raise(RuntimeError, fn -> Fake.fake_raise("oh noes") end)
   end
 
   test "Fake.task/1 should work" do
-    assert 2 == Fake.task(2)
-    assert 3 == Fake.task(3)
+    assert :sorted == Fake.task(2)
+    assert :sorted == Fake.task(3)
   end
 
   test "Fake.populate/0 should populate queue and returns :ok atom" do

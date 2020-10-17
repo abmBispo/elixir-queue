@@ -17,14 +17,15 @@ defmodule ElixirQueue.WorkerTest do
     assert Worker.idle?(worker)
   end
 
-  test "Worker.perform/2 should return {:ok, out, worker_pid} tuple", %{worker: worker} do
+  test "Worker.perform/2 should return {worker, job, answer} tuple", %{worker: worker} do
     job = %Job{mod: Enum, func: :reverse, args: [[1,2,3,4,5]]}
-    assert  {:ok, [5, 4, 3, 2, 1], worker} == Worker.perform(worker, job)
+    assert  {worker, job, [5,4,3,2,1]} == Worker.perform(worker, job)
   end
 
-  test "Worker.perform/2 should return {:error, err, worker} tuple", %{worker: worker} do
+  test "Worker.perform/2 should raise RuntimeError", %{worker: worker} do
     job = %Job{mod: ElixirQueue.Fake, func: :fake_raise, args: ["oh noes"]}
-    assert {:error, err, worker} = Worker.perform(worker, job)
-    assert err.message == "oh noes"
+    assert_raise RuntimeError, "oh noes", fn ->
+      Worker.perform(worker, job)
+    end
   end
 end

@@ -19,7 +19,7 @@ defmodule ElixirQueue.Queue do
       iex> ElixirQueue.Queue.perform_later(Enum, :reverse, [[1,2,3,4,5]])
       :ok
   """
-  @spec perform_later(atom, atom, list(any)) :: :ok
+  @spec perform_later(atom, atom, list(ElixirQueue.Job.t())) :: :ok
   def perform_later(mod, func, args \\ []) do
     job = %Job{mod: mod, func: func, args: args, retry_attempts: 0}
     GenServer.call(Queue, {:perform_later, job})
@@ -47,7 +47,7 @@ defmodule ElixirQueue.Queue do
       iex> ElixirQueue.Queue.perform_later(Enum, :reverse, [[1,2,3,4,5]])
       :ok
       iex> ElixirQueue.Queue.fetch()
-      {:ok, %ElixirQueue.Job{mod: Enum, func: :reverse, args: [[1,2,3,4,5]]}}
+      {:ok, %ElixirQueue.Job{mod: Enum, func: :reverse, args: [[1,2,3,4,5]], retry_attempts: 0}}
       iex> ElixirQueue.Queue.fetch()
       {:error, :empty}
   """
