@@ -1,5 +1,7 @@
+<p align="center">
+  <img width="50%" src="./queue-logo.png" alt="a queue!">
+</p>
 <div align="center">
-
   <h1><code>Elixir Queue</code></h1>
 </div>
 
