@@ -1,9 +1,15 @@
-# ElixirQueue
+<div align="center">
 
-## Motivação
+  <h1><code>Elixir Queue</code></h1>
+</div>
+
+## 🗺 Translations
+- [🇺🇸 English](./README.en_US.md)
+
+## 🤔 Motivação
 O motivo principal pelo qual resolvi desenvolver essa fila de processos foi o aprendizado das estruturas e APIs do Erlang/OTP utilizando o Elixir. Provalvemente existem muitas outras filas de processamento de serviços em segundo plano espalhadas por ai bem mais eficientes do que esta que se encontra aqui. No entanto acredito que para quem está começando é demasiado interessante ter acesso a estruturas mais simples, tanto do ponto de vista de lógica de programação quanto da perspectiva operacional do OTP. Por isso optei por fazer desde a base um software para execução de processos de forma a conseguir explicar as tomadas de decisão e, eventualmente, ir corrigindo esse caminho conforme a comunidade demonstre que uma ou outra opção é melhor, através de _pull requests_ ou mesmo _issues_ abertas. Tenho certeza que será de grande ajuda para iniciantes e para mim o que for tratado aqui.
 
-## Estrutura
+## 📘 Estrutura
 ### Fluxo/Diagrama da aplicação
 Abaixo um diagrama completo do fluxo de dados e possibilidades de acontecimentos do sistema.
 ![Diagrama de fluxo de aplicação](https://raw.githubusercontent.com/abmBispo/elixir-queue/master/ElixirQueue.png)
@@ -43,7 +49,7 @@ Como ficou claro na explicação, não existe nenhum ponto da trilha de execuç�
 
 Na ocasião da falha de algum worker que acarrete em sua morte via _EXIT signal_ o `WorkerPool`, que monitora todos os seus workers via `Process.monitor`, repõe este worker morto por outro, adicionando-o ao `WorkerSupervisor`. Com isso também remove o `PID` do `Worker` morto da lista de `PID`s e adiciona o novo. Porém não para por ai: o `WorkerPool` checa por algum backup criado do `Worker` morto e, encontrando, repõe o _job_ na fila com seu valor de _attempt_retry_ adicionado de um. O `WorkerPool` sempre irá adicionar o _job_ novamente na fila uma quantidade pré-determinada de vezes, definida no arquivo `mix.exs`, no _environment_ da _application_. 
 
-## Análise de desempenho
+## 🏃 Análise de desempenho
 ### Por que `Tuple` ao invés de `List`
 Para fila de processos funcionar normalmente eu preciso apenas de inserir no final e retirar do início. Claramente isso pode ser feito tanto com `List` quanto com `Tuple`, e acabei optando por tuple pelo simples fato de ser mais rápido. Direto do _output_ do Benchee rodando `mix run benchmark.exs` na raiz do projeto:
 ```
@@ -77,7 +83,7 @@ Insert element at end of linked list        1.24 K - 3.95x slower +603.85 μs
 ### Teste de estresse
 Preparei um teste de estresse para a aplicação que enfileira 1000 _fake jobs_, cada um ordenando uma `List` reversamente ordenada com 3 milhões de elementos, utilizando o `Enum.sort/1` (de acordo com a documentação, o algoritmo é um _merge sort_). Para executá-lo basta entrar no terminal via `iex -S mix` e rodar `ElixirQueue.Fake.populate`; a execução leva alguns minutos (e pelo menos uns 2gb de RAM), e depois você pode conferir os resultados com `ElixirQueue.Fake.spec`.
 
-## Exemplos de uso
+## 💼 Exemplos de uso
 Para ver a fila de processos funcionando basta executar `iex -S mix` na raiz do projeto e utilizar os comandos abaixo. A menos que você esteja em modo `test`, você verá _logs_ de informação sobre a execução do _job_.
 
 ### ElixirQueue.Queue.perform_later/1
