@@ -1,15 +1,19 @@
 # ElixirQueue
 
-## Motivação
-O motivo principal pelo qual resolvi desenvolver essa fila de processos foi o aprendizado das estruturas e APIs do Erlang/OTP utilizando o Elixir. Provalvemente existem muitas outras filas de processamento de serviços em segundo plano espalhadas por ai bem mais eficientes do que esta que se encontra aqui. No entanto acredito que para quem está começando é demasiado interessante ter acesso a estruturas mais simples, tanto do ponto de vista de lógica de programação quanto da perspectiva operacional do OTP. Por isso optei por fazer desde a base um software para execução de processos de forma a conseguir explicar as tomadas de decisão e, eventualmente, ir corrigindo esse caminho conforme a comunidade demonstre que uma ou outra opção é melhor, através de _pull requests_ ou mesmo _issues_ abertas. Tenho certeza que será de grande ajuda para iniciantes e para mim o que for tratado aqui.
+## 🤔 Why?
+The main reason why I decided to develop this process queue was the learning of Erlang/OTP structures and APIs using Elixir. There are probably many other processing queue in-background services that are far more efficient than the one written here.
 
-## Estrutura
-### Fluxo/Diagrama da aplicação
-Abaixo um diagrama completo do fluxo de dados e possibilidades de acontecimentos do sistema.
+However, I believe that it is interesting for beginners to just have access to simpler structures, both from a programming logic and OTP operational perspective. That's why I chose to make a this software from the get-go in order to be able to explain the decision making and, eventually, improve it as the community shows that one or another option is better, through _pull requests_ or _issues_ in this repository. I am sure that what is dealt with here will be of great help for everyone learning, or seeking to improve his/her skills in Elixir, including me.
+
+## 📘 Architecture
+### Application diagram
+The picture below shows a complete diagram of the data flow and possible system events.
+
 ![Diagrama de fluxo de aplicação](https://raw.githubusercontent.com/abmBispo/elixir-queue/master/ElixirQueue.png)
 
 ### ElixirQueue.Application
-A `Application`desta fila de processos supervisiona os processos que irão criar/consumir a fila. Eis os filhos da `ElixirQueue.Supervisor`:
+The `Application` of this process queue supervises the processes that will create/consume the queue. Here are the children of `ElixirQueue.Supervisor`:
+
 ```ex
 children = [
   {ElixirQueue.Queue, name: ElixirQueue.Queue},
@@ -18,34 +22,55 @@ children = [
   {ElixirQueue.EventLoop, []}
 ]
 ```
-Os filhos, de cima para baixo, representam as seguintes estruturas: `ElixirQueue.Queue` é o `GenServer` que guarda o estado da fila numa tupla; `ElixirQueue.WorkerSupervisor`é o `DynamicSupervisor` dos _workers_ adicionados dinamicamente sempre igual ou menor que o número de `schedulers` onlines; `ElixirQueue.WorkerPool`, o processo responsável por guardar os `pids` dos _workers_ e os _jobs_ executados, quer seja com sucesso ou falha; e por último o `ElixirQueue.EventLoop` que é a `Task` que "escuta" as mudanças na `ElixirQueue.Queue` (ou seja, na fila de processos) e retira _jobs_ para serem executados. O funcionamento específico de cada módulo eu explicarei conforme for me parecendo útil.
+
+The children, from top to bottom, represent the following structures:
+- `ElixirQueue.Queue` is the `GenServer` that stores the queue state in a tuple.
+- `ElixirQueue.WorkerSupervisor` is the `DynamicSupervisor` of the dynamically added _workers_ always equal to or less than the number of online `schedulers`.
+- `ElixirQueue.WorkerPool` is the process responsible for saving the `pids` of the executed _workers_ and _jobs_, whether successful or failed.
+- `ElixirQueue.EventLoop`, which is the `Task` that "listens" to the changes in the `ElixirQueue.Queue` (i.e., in the process queue) and removes _jobs_ to be executed.
+
+The specific functioning of each module I will explain as it seems useful to me.
 
 ### ElixirQueue.EventLoop
-Eis aqui o processo que controla a retirada de elementos da fila. Um _event loop_ por padrão é uma função que executa numa iteração/recursão _pseudo infinita_, uma vez que não existe a intenção de se quebrar o _loop_. A cada ciclo o _loop_ busca _jobs_ adicionados na fila - ou seja, de certa forma o `ElixirQueue.EventLoop` "escuta" as alterações que ocorreram na fila e reage a partir desses eventos - os direciona ao `ElixirQueue.WorkerPool` para serem executados. Este módulo assume o _behaviour_ de `Task` e sua única função (`event_loop/0`) não retorna nenhum valor tendo em vista que é um _loop_ eterno: ela busca da fila algum elemento e pode receber ou uma tupla `{:ok, job}` com a a tarefa a ser realizada ou uma tupla `{:error, :empty}` para caso a fila esteja vazia; no primeiro caso ele envia para o `ElixirQueue.WorkerPool` a tarefa e executa `event_loop/0` novamente; no segundo caso ele apenas executa a própria função recursivamente, continuando o loop até encontrar algum evento relevante (inserção de elemento na fila).
+
+Here is the process that controls the removal of elements from the queue. A _event loop_ by default is a function that executes in an iteration/recession _pseuedo-infinitetely_, since there is no intention to break the _loop_. With each cycle the _loop_ looks for _jobs_ added to the queue - that is, in a way `ElixirQueue.EventLoop` "listens" for changes that have occurred in the queue and reacts from these events - it directs them to `ElixirQueue.WorkerPool` to be executed.
+
+This module assumes the _behavior_ of `Task` and its only function (`event_loop/0`) does not return any value since it is an eternal _loop_: it searches the queue for some element and can receive either:
+- a tuple `{:ok, job}` with the task to be performed. In this case, it sends to the `ElixirQueue.WorkerPool` the task and executes `event_loop/0` again.
+- a tuple `{:error, :empty}` in case the queue is empty. In the second case it just executes the function itself recursively, continuing the loop until it finds some relevant event (element insertion in the queue).
 
 ### ElixirQueue.Queue
-O módulo `ElixirQueue.Queue` guarda o coração do sistema. Aqui os _jobs_ são enfileirados para serem consumidos mais tarde pelos _workers_. É um `GenServer` sob a supervisão da `ElixirQueue.Application`, que guarda uma tupla como estado e nessa tupla estão guardados os jobs - para entender o porquê eu preferi por uma tupla ao invés de uma lista encadeada (`List`), mais abaixo em **Análise de Desempenho** está explicado. A `Queue` é uma estrutura bem simples, com funções triviais que basicamente limpam, buscam o primeiro elemento da fila para ser executado e insere um elemento ao fim da fila, de forma a ser executado mais tarde, conforme inserção.
+The `ElixirQueue.Queue` module holds the heart of the system. Here the _jobs_ are queued up to be consumed later by the _workers_. It is a `GenServer` under the supervision of `ElixirQueue.Application`, which stores a tuple as a state and in that tuple the jobs are stored - to understand why I preferred a tuple rather than a chained list (`List`), I explained this decision in the section **Performance Analysis** further below.
+
+The `Queue` is a very simple structure, with trivial functions that basically clean, look for the first element of the queue to be executed and insert an element at the end of the queue, so that it can be executed later, as inserted.
 
 ### ElixirQueue.WorkerPool
-Aqui está o módulo capaz de se comunicar tanto com a fila quanto com os _workers_. Quando a _Application_ é iniciada e os processos supervisionados, um dos eventos que ocorre é justamente a inciação dos _workers_ sob a supervisão do `ElixirQueue.WorkerSupervisor`, um `DynamicSupervisor`, e os seus respectivos _PIDs_ são adicionados ao estado do `ElixirQueue.WorkerPool`. Além disso, cada worker iniciado dentro do escopo do `WorkerPool` é também supervisionado por esse, o motivo disso será abordado a frente.
 
-Quando o `WorkerPool` recebe o pedido para executar um _job_ ele procura por algum de seus _workers PIDs_ que esteja no estado ocioso, ou seja, sem nenhum job sendo executado no momento. Então, para cada _job_ recebido pelo `WorkerPool` através de seu `perform/1`, este vincula o _job_ a um _worker PID_, que passa para o estado de ocupado. Quando o worker termina a execução, limpa seu estado e então fica ocioso, esperando por outro _job_. No caso, isso que aqui chamamos de _worker_ nada mais é do que um `Agent` que guarda em seu estado qual job está sendo executado vinculado àquele PID; ele serve de lastro limitante uma vez que o `WorkerPool` incia uma nova `Task` para cada _job_. Imagine o cenário onde não tivessemos _workers_ para limitar a quantidade de jobs sendo executados concorrentemente: o nosso `EventLoop` inciaria `Task`s a bel prazer, podendo causar grande problemas como estouro de memória caso a `Queue` recebesse uma grande carga de _jobs_ de uma só vez.
+Here is the module capable of communicating with both the queue and the _workers_. When the _Application_ is started and the processes are supervised, one of the events that occurs is precisely the initiation of the _workers_ under the supervision of the `ElixirQueue.WorkerSupervisor`, the `DynamicSupervisor`, and their respective _PIDs_ are added to the `ElixirQueue.WorkerPool` state. In addition, each worker started within the scope of the `WorkerPool` is also supervised by this, the reason for this will be addressed later.
+
+When `WorkerPool` receives the request to execute a _job_ it looks for any of its _workers PIDs_ that are in the idle state, that is, without any jobs being executed at the moment. Then, for each _job_ received by the `WorkerPool` through its `perform/1`, it links the _job_ to a _worker PID_, which goes to the busy state. When the worker finishes the execution, it clears its state and then transitions itself to idle, waiting for another _job_.
+
+In this case, what we call a _worker_ is nothing more than a `Agent` which stores in its state which job is being executed linked to that PID; it serves as a limiting ballast since the `WorkerPool` starts a new `Task` for each _job_. Imagine the scenario where we didn't have _workers_ to limit the amount of jobs being executed concurrently: our `EventLoop` would start `Task`s at its whim, and could cause some trouble, e.g. memory overflow if `Queue` received a big load of _jobs_ at once.
 
 ### ElixirQueue.Worker
-Neste módulo temos os atores responsáveis por tomar os _jobs_ e executá-los. Porém o processo é um pouco mais do que apenas a execução do job; na verdade funciona da seguinte forma:
-1. O `Worker` recebe um pedido para performar um certo _job_, adiciona-o ao seu estado interno (estado interno do `Agent` do `PID` passado) e também a uma tabela `:ets` de backup;
-2. Depois segue para a execução do _job_ em si. É **extremamente necessário lembrarmos** que a execução ocorre no escopo da `Task` invocada pelo `WorkerPool`, e não no escopo do processo do Agent. Foi uma opção de implementação, poderia ser feito de outras diversas formas porém escolhi assim pela simplicidade que acredito ter ficado o código.
-3. Finalmente, com o _job_ finalizado, o `Worker` volta seu estado interno para ocioso e exclui o backup deste worker da tabela `:ets`.
-4. Ademais, com a função do `Worker` tendo sido cumprida, a trilha de execução volta para a `Task` invocada pelo `WorkerPool` e apenas completa a corrida inserindo o _job_ na lista de _jobs_ bem sucedidos.
+In this module we have the actors responsible for taking the _jobs_ and executing them. But the process is a little more than just executing the job; it actually works as follows:
+1. The `Worker` receives a request to perform a certain _job_, adds it to its internal state (internal state of the past PID agent) and also to a backup `:ets` table.
+1. Then it goes to the execution of the _job_ itself. It is **indispensable to remember** that the execution occurs in the scope of the `Task` invoked by the `WorkerPool`, and not in the scope of the Agent's process. It is an implementation detail I chose because of its simplicity, but it can be done in other ways.
+1. Finally, with the _job_ finished, the `Worker` returns its internal state to idle and excludes the backup of this worker from the `:ets` table.
+1. With the `Worker` function having been fulfilled, the execution track goes back to the `Task` invoked by the `WorkerPool` and completes the race by inserting the _job_ in the list of successful _jobs_.
 
-#### Por que o `WorkerPool` superviosiona `Worker`s? Ou: e se `Worker` morrer, como ficamos?
-Como ficou claro na explicação, não existe nenhum ponto da trilha de execução dos _jobs_ onde nos preocupamos com a questão: o que acontece se uma função mal feita for passada como _job_ para a fila de execução, _ou até mesmo!_, o que ocorre caso algum processo `Agent` `Worker` simplesmente corromper a memória e morrer? Pois bem, na intenção de escrever o código da forma mais perene possível, talvez o mais _Elixir like_ o possível, o que foi feito é justamente adicionar garantias de que se os processos falharem (e falharão!) o sistema consiga reagir de tal forma que mitigue os erros.
+#### What happens if a `Worker` dies? Asked differently, why do we need an `WorkerPool` supervisioning `Worker`s?
 
-Na ocasião da falha de algum worker que acarrete em sua morte via _EXIT signal_ o `WorkerPool`, que monitora todos os seus workers via `Process.monitor`, repõe este worker morto por outro, adicionando-o ao `WorkerSupervisor`. Com isso também remove o `PID` do `Worker` morto da lista de `PID`s e adiciona o novo. Porém não para por ai: o `WorkerPool` checa por algum backup criado do `Worker` morto e, encontrando, repõe o _job_ na fila com seu valor de _attempt_retry_ adicionado de um. O `WorkerPool` sempre irá adicionar o _job_ novamente na fila uma quantidade pré-determinada de vezes, definida no arquivo `mix.exs`, no _environment_ da _application_. 
+As you might have noticed, there is no point in the _jobs_ execution trail where we worry about the question: what happens if a badly done function is passed as a _job_ to the execution queue, _or even!_, what happens if some `Agent` `Worker` process simply corrupts the memory and dies?
 
-## Análise de desempenho
-### Por que `Tuple` ao invés de `List`
-Para fila de processos funcionar normalmente eu preciso apenas de inserir no final e retirar do início. Claramente isso pode ser feito tanto com `List` quanto com `Tuple`, e acabei optando por tuple pelo simples fato de ser mais rápido. Direto do _output_ do Benchee rodando `mix run benchmark.exs` na raiz do projeto:
+In order to write the code as robust as possible, and as idiomatic as possible too, what has been done is precisely to add guarantees that if the processes fail (and it will fail!) the system can react in such a way as to mitigate the errors.
+
+When a worker fails to die via the _EXIT signal_, the `WorkerPool` (which monitors all their workers via the `Process.monitor`) replaces this dead worker with another, adding it to the `WorkerSupervisor`. This also removes the `PID` from the dead `Worker` list and adds the new one. But it doesn't stop there: the `WorkerPool` checks for some backup created from the dead `Worker` and, finding it, replaces the _job_ in the queue with its value of _attempt_retry_ plus one. The `WorkerPool` will always add the _job_ back to the queue a predetermined number of times, defined in the `mix.exs` file in the _environment_ of _application_. 
+
+## 🏃 Performance Analysis
+### Why `Tuple` instead of `List`?
+For the process queue to work normally, I just need to insert at the end and remove from the head. Clearly this can be done with both `List` and `Tuple`, and I opted for tuple simply because it is faster. Result from Benchee's _output_ running `mix run benchmark.exs` at the root of the project:
+
 ```
 Operating System: Linux
 CPU Information: Intel(R) Core(TM) i7-8565U CPU @ 1.80GHz
@@ -74,14 +99,14 @@ Insert element at end of tuple              4.89 K
 Insert element at end of linked list        1.24 K - 3.95x slower +603.85 μs
 ```
 
-### Teste de estresse
-Preparei um teste de estresse para a aplicação que enfileira 1000 _fake jobs_, cada um ordenando uma `List` reversamente ordenada com 3 milhões de elementos, utilizando o `Enum.sort/1` (de acordo com a documentação, o algoritmo é um _merge sort_). Para executá-lo basta entrar no terminal via `iex -S mix` e rodar `ElixirQueue.Fake.populate`; a execução leva alguns minutos (e pelo menos uns 2gb de RAM), e depois você pode conferir os resultados com `ElixirQueue.Fake.spec`.
+### Stress test
+I prepared a stress test for the application that queues 1000 _fake jobs_, each one sorting a `List` in reverse order with 3 million elements, using `Enum.sort/1` (according to the documentation, the algorithm is a _merge sort_). To execute it just enter the terminal via `iex -S mix` and run `ElixirQueue.Fake.populate`; the execution takes a few minutes (and at least 2gb of RAM), and then you can check the results with `ElixirQueue.Fake.spec`.
 
-## Exemplos de uso
-Para ver a fila de processos funcionando basta executar `iex -S mix` na raiz do projeto e utilizar os comandos abaixo. A menos que você esteja em modo `test`, você verá _logs_ de informação sobre a execução do _job_.
+## 💼 Usecases
+To see the process queue working just execute `iex -S mix` at the project root and use the commands below. Unless you are in `test` mode, you will see _logs_ about the execution of the _job_.
 
 ### ElixirQueue.Queue.perform_later/1
-É possível construir a _struct_ do _job_ manualmente e passá-lo para a fila.
+You can build the _struct_ of the _job_ by hand and pass it to the queue.
 ```ex
 iex> job = %ElixirQueue.Job{mod: Enum, func: :reverse, args: [[1,2,3,4,5]]}
 iex> ElixirQueue.Queue.perform_later(job)
@@ -89,7 +114,7 @@ iex> ElixirQueue.Queue.perform_later(job)
 ```
 
 ### ElixirQueue.Queue.perform_later/3
-Além disso também podemos passar manualmente os valores do módulo, função e argumentos para `perform_later/3`.
+We can also manually pass the module values, function and arguments to `perform_later/3`.
 ```ex
 iex> ElixirQueue.Queue.perform_later(Enum, :reverse, [[1,2,3,4,5]])
 :ok
